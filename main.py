@@ -1,0 +1,370 @@
+"""
+UniFi AP AC-LR — Wrapper REST API
+==================================
+Servicio FastAPI que se autentica en un controlador UniFi Network local
+usando una cuenta de administrador LOCAL (sin MFA) y expone endpoints para
+consultar y gestionar únicamente los dispositivos UAP-AC-LR / U7LR.
+
+Estrategia de autenticación
+----------------------------
+  • Se utiliza una cuenta de administrador LOCAL de UniFi (no una cuenta SSO/nube de Ubiquiti).
+  • Las cuentas locales no están sujetas al requisito de MFA impuesto por Ubiquiti desde julio 2024.
+  • El wrapper mantiene una única sesión autenticada (basada en cookies) y
+    se re-autentica automáticamente cuando la sesión expira (HTTP 401).
+
+Requisitos
+----------
+    pip install fastapi uvicorn httpx python-dotenv
+
+Ejecución
+---------
+    uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+"""
+
+import os
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+from typing import Any
+
+import httpx
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel
+
+# ---------------------------------------------------------------------------
+# Configuración
+# ---------------------------------------------------------------------------
+load_dotenv()  # lee el archivo .env si existe
+
+UNIFI_HOST     = os.getenv("UNIFI_HOST", "https://192.168.1.1")   # IP o hostname del controlador
+UNIFI_PORT     = os.getenv("UNIFI_PORT", "443")                    # 443 para UniFi OS, 8443 para instalación legacy
+UNIFI_SITE     = os.getenv("UNIFI_SITE", "default")                # nombre del sitio en el controlador
+UNIFI_USER     = os.getenv("UNIFI_USER", "api_service")            # usuario administrador LOCAL
+UNIFI_PASSWORD = os.getenv("UNIFI_PASSWORD", "changeme")           # contraseña del administrador LOCAL
+VERIFY_SSL     = os.getenv("VERIFY_SSL", "false").lower() == "true"
+
+# Los dispositivos UniFi OS (UDM/UCG) prefijan todas las llamadas a la API de red con /proxy/network.
+# Los controladores legacy (instalación propia) NO usan este prefijo.
+# Establece UNIFI_OS=true en tu .env si usas UDM/UCG/Cloud Key Gen2+.
+IS_UNIFI_OS    = os.getenv("UNIFI_OS", "true").lower() == "true"
+
+BASE_URL       = f"{UNIFI_HOST}:{UNIFI_PORT}"
+API_PREFIX     = "/proxy/network" if IS_UNIFI_OS else ""
+LOGIN_ENDPOINT = "/api/auth/login" if IS_UNIFI_OS else "/api/login"
+
+# Cadena del modelo reportada por UniFi para el punto de acceso objetivo.
+# Se usa coincidencia parcial insensible a mayúsculas, por lo que variantes como
+# "UAP-AC-LR", "uap-ac-lr" o "U7LR" son reconocidas correctamente.
+ACLR_MODEL     = os.getenv("ACLR_MODEL", "UAP-AC-LR")
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Gestor de sesión UniFi
+# ---------------------------------------------------------------------------
+class UniFiSession:
+    """Mantiene una sesión httpx autenticada contra el controlador UniFi."""
+
+    def __init__(self) -> None:
+        self._client: httpx.AsyncClient | None = None
+        self._lock = asyncio.Lock()
+
+    async def _build_client(self) -> httpx.AsyncClient:
+        """Crea y devuelve un nuevo cliente HTTP asíncrono."""
+        return httpx.AsyncClient(
+            base_url=BASE_URL,
+            verify=VERIFY_SSL,
+            timeout=10.0,
+            follow_redirects=True,
+        )
+
+    async def _login(self, client: httpx.AsyncClient) -> None:
+        """Envía las credenciales al endpoint de login y almacena la cookie de sesión."""
+        payload = {"username": UNIFI_USER, "password": UNIFI_PASSWORD}
+        response = await client.post(
+            LOGIN_ENDPOINT,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        if response.status_code not in (200, 201):
+            raise RuntimeError(
+                f"Error de autenticación en UniFi: HTTP {response.status_code} — {response.text}"
+            )
+        log.info("Sesión UniFi autenticada correctamente.")
+
+    async def get_client(self) -> httpx.AsyncClient:
+        """Devuelve un cliente autenticado, creándolo o re-autenticándolo si es necesario."""
+        async with self._lock:
+            if self._client is None:
+                client = await self._build_client()
+                await self._login(client)
+                self._client = client
+        return self._client
+
+    async def request(self, method: str, path: str, **kwargs) -> httpx.Response:
+        """Realiza una petición autenticada, reintentando una vez si recibe un 401."""
+        client = await self.get_client()
+        response = await client.request(method, path, **kwargs)
+
+        if response.status_code == 401:
+            log.warning("Sesión expirada — re-autenticando…")
+            async with self._lock:
+                await self._login(client)
+            response = await client.request(method, path, **kwargs)
+
+        return response
+
+    async def close(self) -> None:
+        """Cierra el cliente HTTP y libera la sesión."""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+
+# Instancia singleton de la sesión
+unifi = UniFiSession()
+
+
+# ---------------------------------------------------------------------------
+# Ciclo de vida de FastAPI
+# ---------------------------------------------------------------------------
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Autenticar al inicio para que la primera petición sea rápida
+    try:
+        await unifi.get_client()
+    except Exception as exc:
+        log.error("No se pudo conectar al controlador UniFi al iniciar: %s", exc)
+    yield
+    await unifi.close()
+
+
+# ---------------------------------------------------------------------------
+# Aplicación
+# ---------------------------------------------------------------------------
+app = FastAPI(
+    title="UniFi AP AC-LR API",
+    description=(
+        "Wrapper ligero sobre la API REST del controlador UniFi Network, "
+        "enfocado exclusivamente en los puntos de acceso UAP-AC-LR / U7LR."
+    ),
+    version="1.0.0",
+    lifespan=lifespan,
+)
+
+
+# ---------------------------------------------------------------------------
+# Funciones auxiliares
+# ---------------------------------------------------------------------------
+def api_url(path: str) -> str:
+    """Construye la URL completa del endpoint de la API para el sitio configurado."""
+    return f"{API_PREFIX}/api/s/{UNIFI_SITE}{path}"
+
+
+def filter_aclr(devices: list[dict]) -> list[dict]:
+    """Filtra y devuelve únicamente los dispositivos que coincidan con ACLR_MODEL (insensible a mayúsculas)."""
+    needle = ACLR_MODEL.lower()
+    return [d for d in devices if needle in d.get("model", "").lower()]
+
+
+def slim_device(d: dict) -> dict:
+    """Devuelve un subconjunto limpio y útil de los campos de un dispositivo."""
+    return {
+        "id":            d.get("_id"),
+        "name":          d.get("name"),
+        "model":         d.get("model"),
+        "mac":           d.get("mac"),
+        "ip":            d.get("ip"),
+        "version":       d.get("version"),
+        "state":         d.get("state"),        # 1 = conectado, 0 = desconectado
+        "uptime":        d.get("uptime"),        # segundos activo
+        "last_seen":     d.get("last_seen"),     # timestamp Unix
+        "clients":       d.get("num_sta", 0),   # clientes conectados actualmente
+        "tx_bytes":      d.get("tx_bytes"),
+        "rx_bytes":      d.get("rx_bytes"),
+        "satisfaction":  d.get("satisfaction"), # puntuación de calidad del canal (0-100)
+        "radio_table":   d.get("radio_table"),   # información detallada de las radios
+    }
+
+
+async def _fetch_devices_raw() -> list[dict]:
+    """Obtiene todos los dispositivos del controlador UniFi y los devuelve como lista de dicts."""
+    resp = await unifi.request("GET", api_url("/stat/device"))
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=resp.status_code,
+            detail=f"Error en la API de UniFi: {resp.text}",
+        )
+    body = resp.json()
+    return body.get("data", [])
+
+
+# ---------------------------------------------------------------------------
+# Modelos Pydantic para los cuerpos POST
+# ---------------------------------------------------------------------------
+class RenamePayload(BaseModel):
+    name: str  # nuevo nombre para el dispositivo
+
+class LEDPayload(BaseModel):
+    led_override: str  # valores posibles: "on" | "off" | "default"
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/health", tags=["Meta"])
+async def health():
+    """Comprobación de disponibilidad — NO realiza peticiones al controlador UniFi."""
+    return {"status": "ok"}
+
+
+@app.get("/debug/devices", tags=["Debug"])
+async def debug_all_devices():
+    """
+    Devuelve TODOS los dispositivos registrados en UniFi (cualquier modelo) con su nombre,
+    MAC y modelo — útil para verificar qué cadena de modelo reporta tu AP.
+    Elimina o protege este endpoint en producción.
+    """
+    raw = await _fetch_devices_raw()
+    return {
+        "total": len(raw),
+        "aclr_filter_string": ACLR_MODEL,
+        "devices": [
+            {
+                "name":  d.get("name"),
+                "mac":   d.get("mac"),
+                "model": d.get("model"),
+                "type":  d.get("type"),
+            }
+            for d in raw
+        ],
+    }
+
+
+@app.get("/ap-aclr", tags=["AP AC-LR"])
+async def list_aclr_devices():
+    """
+    Lista todos los puntos de acceso UAP-AC-LR / U7LR registrados en este sitio.
+
+    Devuelve un resumen limpio de cada dispositivo: estado de conectividad,
+    número de clientes, puntuación de satisfacción e información de radios.
+    """
+    raw = await _fetch_devices_raw()
+    devices = filter_aclr(raw)
+    return {
+        "count": len(devices),
+        "devices": [slim_device(d) for d in devices],
+    }
+
+
+@app.get("/ap-aclr/{mac}", tags=["AP AC-LR"])
+async def get_aclr_device(mac: str):
+    """
+    Obtiene información detallada de un único UAP-AC-LR identificado por su dirección MAC.
+
+    La MAC debe estar en formato minúsculas separada por dos puntos, p. ej. `aa:bb:cc:dd:ee:ff`.
+    """
+    raw = await _fetch_devices_raw()
+    devices = filter_aclr(raw)
+    mac_lower = mac.lower()
+    match = next((d for d in devices if d.get("mac", "").lower() == mac_lower), None)
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No se encontró ningún UAP-AC-LR con MAC {mac}",
+        )
+    # Devuelve los datos completos del dispositivo tal como los reporta UniFi
+    return match
+
+
+@app.get("/ap-aclr/{mac}/clients", tags=["AP AC-LR"])
+async def get_aclr_clients(mac: str):
+    """
+    Lista los clientes inalámbricos actualmente asociados a un UAP-AC-LR específico.
+    """
+    resp = await unifi.request("GET", api_url("/stat/sta"))
+    if resp.status_code != 200:
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+    all_clients: list[dict] = resp.json().get("data", [])
+    mac_lower = mac.lower()
+    # Filtra solo los clientes cuyo ap_mac coincida con el AP solicitado
+    ap_clients = [
+        c for c in all_clients if c.get("ap_mac", "").lower() == mac_lower
+    ]
+    return {"ap_mac": mac_lower, "count": len(ap_clients), "clients": ap_clients}
+
+
+@app.post("/ap-aclr/{mac}/rename", tags=["AP AC-LR"])
+async def rename_aclr_device(mac: str, payload: RenamePayload):
+    """
+    Renombra un dispositivo UAP-AC-LR.
+
+    Cuerpo: `{ "name": "nuevo-nombre" }`
+    """
+    # Primero obtenemos el _id interno del dispositivo, requerido por la API de UniFi
+    raw = await _fetch_devices_raw()
+    devices = filter_aclr(raw)
+    mac_lower = mac.lower()
+    match = next((d for d in devices if d.get("mac", "").lower() == mac_lower), None)
+    if not match:
+        raise HTTPException(status_code=404, detail=f"No se encontró ningún UAP-AC-LR con MAC {mac}")
+
+    device_id = match["_id"]
+    resp = await unifi.request(
+        "PUT",
+        api_url(f"/rest/device/{device_id}"),
+        json={"name": payload.name},
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return {"success": True, "new_name": payload.name}
+
+
+@app.post("/ap-aclr/{mac}/restart", tags=["AP AC-LR"])
+async def restart_aclr_device(mac: str):
+    """
+    Envía un comando de reinicio a un dispositivo UAP-AC-LR.
+    """
+    resp = await unifi.request(
+        "POST",
+        api_url("/cmd/devmgr"),
+        json={"cmd": "restart", "mac": mac.lower()},
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return {"success": True, "message": f"Comando de reinicio enviado a {mac}"}
+
+
+@app.post("/ap-aclr/{mac}/led", tags=["AP AC-LR"])
+async def set_aclr_led(mac: str, payload: LEDPayload):
+    """
+    Controla el estado del LED de un UAP-AC-LR.
+
+    Cuerpo: `{ "led_override": "on" | "off" | "default" }`
+    """
+    if payload.led_override not in ("on", "off", "default"):
+        raise HTTPException(status_code=400, detail="led_override debe ser 'on', 'off' o 'default'")
+
+    # Obtenemos el _id del dispositivo antes de hacer la actualización
+    raw = await _fetch_devices_raw()
+    devices = filter_aclr(raw)
+    mac_lower = mac.lower()
+    match = next((d for d in devices if d.get("mac", "").lower() == mac_lower), None)
+    if not match:
+        raise HTTPException(status_code=404, detail=f"No se encontró ningún UAP-AC-LR con MAC {mac}")
+
+    device_id = match["_id"]
+    resp = await unifi.request(
+        "PUT",
+        api_url(f"/rest/device/{device_id}"),
+        json={"led_override": payload.led_override},
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return {"success": True, "led_override": payload.led_override}
