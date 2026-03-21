@@ -1,0 +1,25 @@
+# Entorno virtual local — las dependencias se instalan dentro del contenedor
+.venv/
+venv/
+env/
+
+# Archivos de configuración con credenciales — se inyectan en tiempo de ejecución
+.env
+
+# Caché de Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Archivos de control de versiones
+.git/
+.gitignore
+
+# Documentación y archivos de desarrollo — no necesarios en el contenedor
+README.md
+*.md
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
