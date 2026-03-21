@@ -25,21 +25,19 @@ import os
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from typing import Any
 
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 # ---------------------------------------------------------------------------
 # Configuración
 # ---------------------------------------------------------------------------
-load_dotenv()  # lee el archivo .env si existe
+load_dotenv()  # lee el archivo .env si existe — en Docker las vars vienen del --env-file
 
-UNIFI_HOST     = os.getenv("UNIFI_HOST", "https://192.168.1.1")   # IP o hostname del controlador
-UNIFI_PORT     = os.getenv("UNIFI_PORT", "443")                    # 443 para UniFi OS, 8443 para instalación legacy
+UNIFI_HOST     = os.getenv("UNIFI_HOST", "https://192.168.1.1")   # IP o hostname del controlador (sin barra final, sin puerto)
+UNIFI_PORT     = os.getenv("UNIFI_PORT", "8443")                   # 443 para UniFi OS, 8443 para instalación legacy
 UNIFI_SITE     = os.getenv("UNIFI_SITE", "default")                # nombre del sitio en el controlador
 UNIFI_USER     = os.getenv("UNIFI_USER", "api_service")            # usuario administrador LOCAL
 UNIFI_PASSWORD = os.getenv("UNIFI_PASSWORD", "changeme")           # contraseña del administrador LOCAL
@@ -48,9 +46,13 @@ VERIFY_SSL     = os.getenv("VERIFY_SSL", "false").lower() == "true"
 # Los dispositivos UniFi OS (UDM/UCG) prefijan todas las llamadas a la API de red con /proxy/network.
 # Los controladores legacy (instalación propia) NO usan este prefijo.
 # Establece UNIFI_OS=true en tu .env si usas UDM/UCG/Cloud Key Gen2+.
-IS_UNIFI_OS    = os.getenv("UNIFI_OS", "true").lower() == "true"
+IS_UNIFI_OS    = os.getenv("UNIFI_OS", "false").lower() == "true"
 
-BASE_URL       = f"{UNIFI_HOST}:{UNIFI_PORT}"
+# BASE_URL: se limpia UNIFI_HOST de barras finales para evitar duplicar el puerto
+# si el usuario incluyó el puerto dentro de UNIFI_HOST por error.
+_host_clean    = UNIFI_HOST.rstrip("/")
+BASE_URL       = f"{_host_clean}:{UNIFI_PORT}"
+
 API_PREFIX     = "/proxy/network" if IS_UNIFI_OS else ""
 LOGIN_ENDPOINT = "/api/auth/login" if IS_UNIFI_OS else "/api/login"
 
@@ -83,8 +85,17 @@ class UniFiSession:
         )
 
     async def _login(self, client: httpx.AsyncClient) -> None:
-        """Envía las credenciales al endpoint de login y almacena la cookie de sesión."""
+        """
+        Envía las credenciales al endpoint de login y almacena la cookie de sesión.
+
+        El controlador legacy de UniFi acepta el campo 'username' con el nombre
+        de usuario local. Si la cuenta fue creada sin vincular a la nube de Ubiquiti,
+        el campo username corresponde exactamente al valor de UNIFI_USER en el .env.
+        Se registra en el log qué usuario y URL se están usando para facilitar la
+        depuración de errores 400 por credenciales incorrectas.
+        """
         payload = {"username": UNIFI_USER, "password": UNIFI_PASSWORD}
+        log.info("Intentando login en %s%s como usuario '%s'", BASE_URL, LOGIN_ENDPOINT, UNIFI_USER)
         response = await client.post(
             LOGIN_ENDPOINT,
             json=payload,
@@ -134,6 +145,17 @@ unifi = UniFiSession()
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Registrar la configuración activa al iniciar (sin mostrar la contraseña)
+    log.info("=== Configuración activa ===")
+    log.info("  BASE_URL       : %s", BASE_URL)
+    log.info("  LOGIN_ENDPOINT : %s", LOGIN_ENDPOINT)
+    log.info("  UNIFI_SITE     : %s", UNIFI_SITE)
+    log.info("  UNIFI_USER     : %s", UNIFI_USER)
+    log.info("  UNIFI_OS       : %s", IS_UNIFI_OS)
+    log.info("  ACLR_MODEL     : %s", ACLR_MODEL)
+    log.info("  VERIFY_SSL     : %s", VERIFY_SSL)
+    log.info("============================")
+
     # Autenticar al inicio para que la primera petición sea rápida
     try:
         await unifi.get_client()
@@ -147,7 +169,7 @@ async def lifespan(app: FastAPI):
 # Aplicación
 # ---------------------------------------------------------------------------
 app = FastAPI(
-    title="UniFi AP AC-LR API",
+    title="UniFi AP API",
     description=(
         "Wrapper ligero sobre la API REST del controlador UniFi Network, "
         "enfocado exclusivamente en los puntos de acceso UAP-AC-LR / U7LR."
@@ -174,20 +196,20 @@ def filter_aclr(devices: list[dict]) -> list[dict]:
 def slim_device(d: dict) -> dict:
     """Devuelve un subconjunto limpio y útil de los campos de un dispositivo."""
     return {
-        "id":            d.get("_id"),
-        "name":          d.get("name"),
-        "model":         d.get("model"),
-        "mac":           d.get("mac"),
-        "ip":            d.get("ip"),
-        "version":       d.get("version"),
-        "state":         d.get("state"),        # 1 = conectado, 0 = desconectado
-        "uptime":        d.get("uptime"),        # segundos activo
-        "last_seen":     d.get("last_seen"),     # timestamp Unix
-        "clients":       d.get("num_sta", 0),   # clientes conectados actualmente
-        "tx_bytes":      d.get("tx_bytes"),
-        "rx_bytes":      d.get("rx_bytes"),
-        "satisfaction":  d.get("satisfaction"), # puntuación de calidad del canal (0-100)
-        "radio_table":   d.get("radio_table"),   # información detallada de las radios
+        "id":           d.get("_id"),
+        "name":         d.get("name"),
+        "model":        d.get("model"),
+        "mac":          d.get("mac"),
+        "ip":           d.get("ip"),
+        "version":      d.get("version"),
+        "state":        d.get("state"),        # 1 = conectado, 0 = desconectado
+        "uptime":       d.get("uptime"),        # segundos activo
+        "last_seen":    d.get("last_seen"),     # timestamp Unix
+        "clients":      d.get("num_sta", 0),   # clientes conectados actualmente
+        "tx_bytes":     d.get("tx_bytes"),
+        "rx_bytes":     d.get("rx_bytes"),
+        "satisfaction": d.get("satisfaction"), # puntuación de calidad del canal (0-100)
+        "radio_table":  d.get("radio_table"),   # información detallada de las radios
     }
 
 
