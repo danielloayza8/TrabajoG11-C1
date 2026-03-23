@@ -30,13 +30,17 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 
+#Importar para implementar auth API key
+from fastapi.security import APIKeyHeader
+from fastapi import Security
+
 # ---------------------------------------------------------------------------
 # Configuración
 # ---------------------------------------------------------------------------
 load_dotenv()  # lee el archivo .env si existe — en Docker las vars vienen del --env-file
 
-UNIFI_HOST     = os.getenv("UNIFI_HOST", "https://192.168.1.1")   # IP o hostname del controlador (sin barra final, sin puerto)
-UNIFI_PORT     = os.getenv("UNIFI_PORT", "8443")                   # 443 para UniFi OS, 8443 para instalación legacy
+UNIFI_HOST     = os.getenv("UNIFI_HOST", "https://hg209n5jgv3.sn.mynetname.net")   # IP o hostname del controlador (sin barra final, sin puerto)
+UNIFI_PORT     = os.getenv("UNIFI_PORT", "8064")                   # 443 para UniFi OS, 8443 para instalación legacy
 UNIFI_SITE     = os.getenv("UNIFI_SITE", "default")                # nombre del sitio en el controlador
 UNIFI_USER     = os.getenv("UNIFI_USER", "api_service")            # usuario administrador LOCAL
 UNIFI_PASSWORD = os.getenv("UNIFI_PASSWORD", "changeme")           # contraseña del administrador LOCAL
@@ -59,6 +63,11 @@ LOGIN_ENDPOINT = "/api/auth/login" if IS_UNIFI_OS else "/api/login"
 # Se usa coincidencia parcial insensible a mayúsculas, por lo que variantes como
 # "UAP-AC-LR", "uap-ac-lr" o "U7LR" son reconocidas correctamente.
 ACLR_MODEL     = os.getenv("ACLR_MODEL", "UAP-AC-LR")
+
+#VARIABLES para API KEY
+API_KEY = os.getenv("API_KEY", "123456")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -223,7 +232,11 @@ async def _fetch_devices_raw() -> list[dict]:
     body = resp.json()
     return body.get("data", [])
 
-
+# Función de validación
+async def verify_api_key(api_key: str = Security(api_key_header)):
+    if api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
 # ---------------------------------------------------------------------------
 # Modelos Pydantic para los cuerpos POST
 # ---------------------------------------------------------------------------
@@ -321,7 +334,7 @@ async def get_aclr_clients(mac: str):
     return {"ap_mac": mac_lower, "count": len(ap_clients), "clients": ap_clients}
 
 
-@app.post("/ap-aclr/{mac}/rename", tags=["AP AC-LR"])
+@app.post("/ap-aclr/{mac}/rename", dependencies=[Security(verify_api_key)], tags=["AP AC-LR"])
 async def rename_aclr_device(mac: str, payload: RenamePayload):
     """
     Renombra un dispositivo UAP-AC-LR.
@@ -347,7 +360,7 @@ async def rename_aclr_device(mac: str, payload: RenamePayload):
     return {"success": True, "new_name": payload.name}
 
 
-@app.post("/ap-aclr/{mac}/restart", tags=["AP AC-LR"])
+@app.post("/ap-aclr/{mac}/restart", dependencies=[Security(verify_api_key)], tags=["AP AC-LR"])
 async def restart_aclr_device(mac: str):
     """
     Envía un comando de reinicio a un dispositivo UAP-AC-LR.
@@ -362,7 +375,7 @@ async def restart_aclr_device(mac: str):
     return {"success": True, "message": f"Comando de reinicio enviado a {mac}"}
 
 
-@app.post("/ap-aclr/{mac}/led", tags=["AP AC-LR"])
+@app.post("/ap-aclr/{mac}/led", dependencies=[Security(verify_api_key)], tags=["AP AC-LR"])
 async def set_aclr_led(mac: str, payload: LEDPayload):
     """
     Controla el estado del LED de un UAP-AC-LR.
