@@ -20,6 +20,7 @@ Ejecución
 ---------
     uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 """
+
 import os
 import asyncio
 import logging
@@ -224,14 +225,45 @@ async def _fetch_devices_raw() -> list[dict]:
     return body.get("data", [])
 
 
+
 # ---------------------------------------------------------------------------
 # Modelos Pydantic para los cuerpos POST
 # ---------------------------------------------------------------------------
+
 class RenamePayload(BaseModel):
-    name: str  # nuevo nombre para el dispositivo
+    name: str           # nuevo nombre para el dispositivo
 
 class LEDPayload(BaseModel):
-    led_override: str  # valores posibles: "on" | "off" | "default"
+    led_override: str   # valores posibles: "on" | "off" | "default"
+
+class RadioPayload(BaseModel):
+    radio: str          # interfaz de radio: "ng" (2.4 GHz) o "na" (5 GHz)
+    channel: int        # número de canal — 0 para selección automática
+    tx_power_mode: str  # "auto", "high", "medium", "low" o "custom"
+    tx_power: int = 0   # potencia en dBm, solo aplica cuando tx_power_mode es "custom"
+
+class KickClientPayload(BaseModel):
+    client_mac: str     # dirección MAC del cliente WiFi a desconectar del AP
+
+
+# ---------------------------------------------------------------------------
+# Función auxiliar compartida por los endpoints POST que modifican un dispositivo
+# ---------------------------------------------------------------------------
+async def _get_device_id(mac: str) -> tuple[str, str]:
+    """
+    Busca el dispositivo por MAC entre los APs filtrados y devuelve (mac_lower, device_id).
+    Lanza HTTP 404 si no se encuentra ningún UAP-AC-LR con esa MAC.
+    """
+    raw = await _fetch_devices_raw()
+    devices = filter_aclr(raw)
+    mac_lower = mac.lower()
+    match = next((d for d in devices if d.get("mac", "").lower() == mac_lower), None)
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No se encontró ningún UAP-AC-LR con MAC {mac}",
+        )
+    return mac_lower, match["_id"]
 
 
 # ---------------------------------------------------------------------------
@@ -321,22 +353,20 @@ async def get_aclr_clients(mac: str):
     return {"ap_mac": mac_lower, "count": len(ap_clients), "clients": ap_clients}
 
 
-@app.post("/ap-aclr/{mac}/rename", tags=["AP AC-LR"])
+# ---------------------------------------------------------------------------
+# Endpoints POST — operaciones de escritura (no reinician el AP)
+# ---------------------------------------------------------------------------
+
+@app.post("/ap-aclr/{mac}/rename", tags=["AP AC-LR — Escritura"])
 async def rename_aclr_device(mac: str, payload: RenamePayload):
     """
     Renombra un dispositivo UAP-AC-LR.
 
+    El cambio es inmediato y no interrumpe el servicio WiFi.
+
     Cuerpo: `{ "name": "nuevo-nombre" }`
     """
-    # Primero obtenemos el _id interno del dispositivo, requerido por la API de UniFi
-    raw = await _fetch_devices_raw()
-    devices = filter_aclr(raw)
-    mac_lower = mac.lower()
-    match = next((d for d in devices if d.get("mac", "").lower() == mac_lower), None)
-    if not match:
-        raise HTTPException(status_code=404, detail=f"No se encontró ningún UAP-AC-LR con MAC {mac}")
-
-    device_id = match["_id"]
+    _, device_id = await _get_device_id(mac)
     resp = await unifi.request(
         "PUT",
         api_url(f"/rest/device/{device_id}"),
@@ -347,40 +377,21 @@ async def rename_aclr_device(mac: str, payload: RenamePayload):
     return {"success": True, "new_name": payload.name}
 
 
-@app.post("/ap-aclr/{mac}/restart", tags=["AP AC-LR"])
-async def restart_aclr_device(mac: str):
-    """
-    Envía un comando de reinicio a un dispositivo UAP-AC-LR.
-    """
-    resp = await unifi.request(
-        "POST",
-        api_url("/cmd/devmgr"),
-        json={"cmd": "restart", "mac": mac.lower()},
-    )
-    if resp.status_code not in (200, 201):
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
-    return {"success": True, "message": f"Comando de reinicio enviado a {mac}"}
-
-
-@app.post("/ap-aclr/{mac}/led", tags=["AP AC-LR"])
+@app.post("/ap-aclr/{mac}/led", tags=["AP AC-LR — Escritura"])
 async def set_aclr_led(mac: str, payload: LEDPayload):
     """
     Controla el estado del LED de un UAP-AC-LR.
 
+    El cambio es inmediato y no interrumpe el servicio WiFi.
+
     Cuerpo: `{ "led_override": "on" | "off" | "default" }`
     """
     if payload.led_override not in ("on", "off", "default"):
-        raise HTTPException(status_code=400, detail="led_override debe ser 'on', 'off' o 'default'")
-
-    # Obtenemos el _id del dispositivo antes de hacer la actualización
-    raw = await _fetch_devices_raw()
-    devices = filter_aclr(raw)
-    mac_lower = mac.lower()
-    match = next((d for d in devices if d.get("mac", "").lower() == mac_lower), None)
-    if not match:
-        raise HTTPException(status_code=404, detail=f"No se encontró ningún UAP-AC-LR con MAC {mac}")
-
-    device_id = match["_id"]
+        raise HTTPException(
+            status_code=400,
+            detail="led_override debe ser 'on', 'off' o 'default'",
+        )
+    _, device_id = await _get_device_id(mac)
     resp = await unifi.request(
         "PUT",
         api_url(f"/rest/device/{device_id}"),
@@ -389,3 +400,86 @@ async def set_aclr_led(mac: str, payload: LEDPayload):
     if resp.status_code not in (200, 201):
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
     return {"success": True, "led_override": payload.led_override}
+
+
+@app.post("/ap-aclr/{mac}/radio", tags=["AP AC-LR — Escritura"])
+async def set_aclr_radio(mac: str, payload: RadioPayload):
+    """
+    Ajusta el canal y la potencia de transmisión de una radio del AP.
+
+    El cambio puede causar una interrupción breve de la radio afectada (1-3 segundos)
+    mientras el AP cambia de canal, pero **no reinicia el dispositivo**.
+
+    - `radio`: `"ng"` para 2.4 GHz, `"na"` para 5 GHz
+    - `channel`: número de canal (1-13 para 2.4 GHz, 36-177 para 5 GHz) o `0` para auto
+    - `tx_power_mode`: `"auto"` | `"high"` | `"medium"` | `"low"` | `"custom"`
+    - `tx_power`: potencia en dBm, solo se usa cuando `tx_power_mode` es `"custom"`
+
+    Cuerpo de ejemplo:
+    ```json
+    { "radio": "na", "channel": 36, "tx_power_mode": "auto", "tx_power": 0 }
+    ```
+    """
+    if payload.radio not in ("ng", "na"):
+        raise HTTPException(status_code=400, detail="radio debe ser 'ng' (2.4 GHz) o 'na' (5 GHz)")
+    if payload.tx_power_mode not in ("auto", "high", "medium", "low", "custom"):
+        raise HTTPException(status_code=400, detail="tx_power_mode debe ser 'auto', 'high', 'medium', 'low' o 'custom'")
+
+    _, device_id = await _get_device_id(mac)
+
+    # La API de UniFi espera una lista radio_table con el objeto de la radio a modificar.
+    # Solo enviamos los campos que queremos cambiar dentro del objeto de esa radio.
+    radio_entry: dict = {
+        "radio":         payload.radio,
+        "channel":       payload.channel,
+        "tx_power_mode": payload.tx_power_mode,
+    }
+    if payload.tx_power_mode == "custom":
+        radio_entry["tx_power"] = payload.tx_power
+
+    resp = await unifi.request(
+        "PUT",
+        api_url(f"/rest/device/{device_id}"),
+        json={"radio_table": [radio_entry]},
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return {
+        "success":       True,
+        "radio":         payload.radio,
+        "channel":       payload.channel,
+        "tx_power_mode": payload.tx_power_mode,
+        "tx_power":      payload.tx_power if payload.tx_power_mode == "custom" else "n/a",
+    }
+
+
+@app.post("/ap-aclr/{mac}/kick-client", tags=["AP AC-LR — Escritura"])
+async def kick_client(mac: str, payload: KickClientPayload):
+    """
+    Desconecta un cliente WiFi específico del AP.
+
+    El cliente queda desasociado de la red pero puede volver a conectarse
+    automáticamente si su dispositivo tiene reconexión automática habilitada.
+    Útil para forzar que un cliente cambie de banda o renegocie su conexión.
+
+    El parámetro `{mac}` es la MAC del **AP**; `client_mac` en el cuerpo
+    es la MAC del **cliente** a desconectar.
+
+    Cuerpo: `{ "client_mac": "aa:bb:cc:dd:ee:ff" }`
+    """
+    # Verificamos que el AP existe y es un UAP-AC-LR antes de ejecutar el comando
+    await _get_device_id(mac)
+
+    resp = await unifi.request(
+        "POST",
+        api_url("/cmd/stamgr"),
+        json={"cmd": "kick-sta", "mac": payload.client_mac.lower()},
+    )
+    if resp.status_code not in (200, 201):
+        raise HTTPException(status_code=resp.status_code, detail=resp.text)
+    return {
+        "success":    True,
+        "ap_mac":     mac.lower(),
+        "client_mac": payload.client_mac.lower(),
+        "message":    "Cliente desconectado. Puede reconectarse automáticamente.",
+    }
