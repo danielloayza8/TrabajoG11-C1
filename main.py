@@ -15,7 +15,7 @@ Estrategia de autenticación
 Requisitos
 ----------
     pip install fastapi uvicorn httpx python-dotenv
-
+#V2
 Ejecución
 ---------
     uvicorn main:app --host 0.0.0.0 --port 8000 --reload

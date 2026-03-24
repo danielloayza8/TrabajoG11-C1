@@ -579,11 +579,32 @@ docker run -d --name unifi-aclr-api --restart unless-stopped \
   automáticamente si la sesión expira (respuesta HTTP 401).
 - **Seguridad:** el endpoint `/debug/devices` expone información de red. Elimínalo
   o protégelo con autenticación antes de usar esta API en un entorno de producción.
-<<<<<<< HEAD
-- **Comillas en Docker:** `python-dotenv` elimina comillas de los valores del `.env`
-  automáticamente; Docker con `--env-file` no lo hace. El código incluye la función
-  `_strip_quotes` que normaliza este comportamiento, pero la solución más robusta es
-  usar contraseñas sin caracteres especiales ni comillas.
-- **Modelo del dispositivo:** el U7 LR (Wi-Fi 7) reporta `U7LR`; el UAP-AC-LR
-  (Wi-Fi 5) reporta `UAP-AC-LR`. Verifica siempre con `/debug/devices`.
+- **Modelo del dispositivo:** el UniFi U7 LR (Wi-Fi 7) reporta el modelo como `U7LR`,
+  mientras que el UAP-AC-LR (Wi-Fi 5) reporta `UAP-AC-LR`. Son generaciones distintas
+  de hardware. Verifica siempre con `/debug/devices`.
+- **Docker y red local:** cuando el contenedor corre en la misma máquina que el
+  controlador UniFi, usa la IP de la interfaz de red del host en `UNIFI_HOST`,
+  nunca `localhost`.
+
+
+  ## ANEXOS
+  ## Captura API funcionando Localmente
+  <img width="1422" height="657" alt="image" src="https://github.com/user-attachments/assets/c11e1031-08c1-40f3-a01b-cd5b1c016c23" />
+  <img width="1707" height="1086" alt="image" src="https://github.com/user-attachments/assets/b75593b4-98c1-4023-aa7d-c815f46469de" />
+
+  ## Capturas CURL
+<img width="1387" height="56" alt="image" src="https://github.com/user-attachments/assets/dbd554f5-8d6f-4b43-88cc-a0675a298375" />
+<img width="1429" height="535" alt="image" src="https://github.com/user-attachments/assets/e4d65beb-2383-4136-b767-1f1ccceecb9f" />
+<img width="1417" height="66" alt="image" src="https://github.com/user-attachments/assets/d21ecdc4-bf26-46a2-91c2-dbeef8307a17" />
+<img width="884" height="560" alt="image" src="https://github.com/user-attachments/assets/368b33ff-a6e4-40f7-9e95-9fa92da20ec6" />
+
+## Captura Docker funcionando
+<img width="800" height="306" alt="image" src="https://github.com/user-attachments/assets/32e34323-e518-4244-99dc-f5313c56553a" />
+<img width="2168" height="426" alt="image" src="https://github.com/user-attachments/assets/2b9a234e-2984-492a-800b-87eb745ce3d7" />
+
+## Captura en público
+
+
+
+
 
