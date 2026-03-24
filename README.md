@@ -588,6 +588,42 @@ docker run -d --name unifi-aclr-api --restart unless-stopped \
 
 
   ## ANEXOS
+  ## 🌐 Apertura de puertos con DST-NAT en MikroTik (L009UiGS-RM)
+
+Para permitir el acceso externo a servicios internos dentro de la red, se configuraron reglas de **DST-NAT (Destination Network Address Translation)** en el router MikroTik L009UiGS-RM.
+
+El **DST-NAT** permite redirigir solicitudes que llegan desde Internet a un puerto específico del router hacia una dirección IP y puerto interno dentro de la red local.
+
+---
+
+### 🎯 Objetivo de la configuración
+
+Se habilitaron dos reglas de redirección de puertos:
+
+#### 🔹 Servicio 1 – API propia
+- Permite acceder desde Internet a la API desarrollada localmente.
+- El tráfico entrante en un puerto público es redirigido al servidor interno donde corre la API.
+
+#### 🔹 Servicio 2 – UniFi Application (API REST)
+- Se expone el servicio de **UniFi Network Application**, el cual cuenta con una API REST.
+- Esto permite realizar pruebas remotas e integración durante el desarrollo.
+
+---
+
+### 🌍 Acceso externo
+
+Para las pruebas remotas se utiliza:
+
+- Una **dirección IP pública** asignada al router.
+- Un **dominio dinámico generado por MikroTik (DDNS)**, lo que permite acceder sin necesidad de conocer cambios en la IP pública.
+
+Los servicios pueden ser accedidos mediante:
+
+```bash
+http://<IP_PUBLICA>:<PUERTO>
+http://<DOMINIO_MIKROTIK>:<PUERTO>
+  
+  
   ## Captura API funcionando Localmente
   <img width="1422" height="657" alt="image" src="https://github.com/user-attachments/assets/c11e1031-08c1-40f3-a01b-cd5b1c016c23" />
   <img width="1707" height="1086" alt="image" src="https://github.com/user-attachments/assets/b75593b4-98c1-4023-aa7d-c815f46469de" />
@@ -602,7 +638,7 @@ docker run -d --name unifi-aclr-api --restart unless-stopped \
 <img width="800" height="306" alt="image" src="https://github.com/user-attachments/assets/32e34323-e518-4244-99dc-f5313c56553a" />
 <img width="2168" height="426" alt="image" src="https://github.com/user-attachments/assets/2b9a234e-2984-492a-800b-87eb745ce3d7" />
 
-## Captura en público
+## Captura de funcionamiento en IP pública
 <img width="1916" height="333" alt="image" src="https://github.com/user-attachments/assets/94a24c6e-1141-47ae-844d-7e18f0a47071" />
 <img width="1907" height="1057" alt="image" src="https://github.com/user-attachments/assets/d14679c0-3d9f-4c56-a809-707c6ce0d230" />
 <img width="1879" height="1069" alt="image" src="https://github.com/user-attachments/assets/f08b628c-a6b2-4b6c-92ac-e4113823d53e" />
