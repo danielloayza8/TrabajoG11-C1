@@ -68,9 +68,15 @@ BASE_URL = f"{_host_clean}:{UNIFI_PORT}"
 API_PREFIX = "/proxy/network" if IS_UNIFI_OS else ""
 LOGIN_ENDPOINT = "/api/auth/login" if IS_UNIFI_OS else "/api/login"
 
-# Ahora admite múltiples modelos:
-# AP_MODELS=UAP-AC-LR,U7LR
-AP_MODELS = [m.strip() for m in os.getenv("AP_MODELS", "UAP-AC-LR").split(",") if m.strip()]
+# Cadena del modelo reportada por UniFi para el punto de acceso objetivo.
+# Se usa coincidencia parcial insensible a mayúsculas, por lo que variantes como
+# "UAP-AC-LR", "uap-ac-lr" o "U7LR" son reconocidas correctamente.
+ACLR_MODEL     = os.getenv("ACLR_MODEL", "UAP-AC-LR")
+
+#VARIABLES para API KEY Nuevo
+API_KEY = os.getenv("API_KEY", "2026")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False) 
+#
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -343,8 +349,16 @@ async def get_ap_clients(mac: str):
 # ---------------------------------------------------------------------------
 # Endpoints POST
 # ---------------------------------------------------------------------------
-@app.post("/ap-aclr/{mac}/rename", tags=["AP — Escritura"])
-async def rename_ap(mac: str, payload: RenamePayload):
+#
+@app.post("/ap-aclr/{mac}/rename", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"]) 
+async def rename_aclr_device(mac: str, payload: RenamePayload):
+    """
+    Renombra un dispositivo UAP-AC-LR.
+
+    El cambio es inmediato y no interrumpe el servicio WiFi.
+
+    Cuerpo: `{ "name": "nuevo-nombre" }`
+    """
     _, device_id = await _get_device_id(mac)
     resp = await unifi.request(
         "PUT",
@@ -356,8 +370,15 @@ async def rename_ap(mac: str, payload: RenamePayload):
     return {"success": True, "new_name": payload.name}
 
 
-@app.post("/ap-aclr/{mac}/led", tags=["AP — Escritura"])
-async def set_ap_led(mac: str, payload: LEDPayload):
+@app.post("/ap-aclr/{mac}/led", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"]) 
+async def set_aclr_led(mac: str, payload: LEDPayload):
+    """
+    Controla el estado del LED de un UAP-AC-LR.
+
+    El cambio es inmediato y no interrumpe el servicio WiFi.
+
+    Cuerpo: `{ "led_override": "on" | "off" | "default" }`
+    """
     if payload.led_override not in ("on", "off", "default"):
         raise HTTPException(
             status_code=400,
@@ -376,8 +397,24 @@ async def set_ap_led(mac: str, payload: LEDPayload):
     return {"success": True, "led_override": payload.led_override}
 
 
-@app.post("/ap-aclr/{mac}/radio", tags=["AP — Escritura"])
-async def set_ap_radio(mac: str, payload: RadioPayload):
+@app.post("/ap-aclr/{mac}/radio", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"]) 
+async def set_aclr_radio(mac: str, payload: RadioPayload):
+    """
+    Ajusta el canal y la potencia de transmisión de una radio del AP.
+
+    El cambio puede causar una interrupción breve de la radio afectada (1-3 segundos)
+    mientras el AP cambia de canal, pero **no reinicia el dispositivo**.
+
+    - `radio`: `"ng"` para 2.4 GHz, `"na"` para 5 GHz
+    - `channel`: número de canal (1-13 para 2.4 GHz, 36-177 para 5 GHz) o `0` para auto
+    - `tx_power_mode`: `"auto"` | `"high"` | `"medium"` | `"low"` | `"custom"`
+    - `tx_power`: potencia en dBm, solo se usa cuando `tx_power_mode` es `"custom"`
+
+    Cuerpo de ejemplo:
+    ```json
+    { "radio": "na", "channel": 36, "tx_power_mode": "auto", "tx_power": 0 }
+    ```
+    """
     if payload.radio not in ("ng", "na"):
         raise HTTPException(
             status_code=400,
@@ -418,7 +455,7 @@ async def set_ap_radio(mac: str, payload: RadioPayload):
     }
 
 
-@app.post("/ap-aclr/{mac}/kick-client", tags=["AP — Escritura"])
+@app.post("/ap-aclr/{mac}/kick-client", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"]) 
 async def kick_client(mac: str, payload: KickClientPayload):
     await _get_device_id(mac)
 
