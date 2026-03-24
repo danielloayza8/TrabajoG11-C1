@@ -258,6 +258,35 @@ curl -X POST http://localhost:6000/ap-aclr/fc:ec:da:3d:7f:97/led \
   -H "Content-Type: application/json" \
   -d '{"led_override": "off"}'
 ```
+## AUTENTICACIÓN CON AUTH KEY
+Autenticación mediante API Key
+Para proteger los endpoints sensibles del API (principalmente los métodos POST que realizan cambios en los dispositivos), se implementó un mecanismo de autenticación basado en API Key.
+#¿Cómo funciona?
+La API Key es un valor secreto que el cliente debe enviar en cada solicitud dentro de la cabecera HTTP:
+X-API-Key: <202603>
+El servidor valida este valor antes de procesar la petición. Si la clave es incorrecta o no se envía, el acceso es rechazado.
+#Implementación
+Se utiliza APIKeyHeader de FastAPI para capturar la cabecera:
+"api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)"
+Luego se valida con una función:
+"async def verify_api_key(api_key: str = Security(api_key_header)):
+    if api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="No autorizado")"
+Esta función se aplica como dependencia en los endpoints protegidos y en todos los post definidos:
+"@app.post("/ap-aclr/{mac}/rename", dependencies=[Security(verify_api_key)])"
+De esta forma, cualquier solicitud a ese endpoint requiere autenticación previa.
+
+##¿Por qué usar API Key?
+Evita accesos no autorizados
+Protege operaciones críticas (reinicios, cambios de configuración)
+Es simple de implementar y eficiente para APIs internas
+
+##Pruebas con curl
+Ejemplo
+curl -X POST http://localhost:8000/ap-aclr/aa:bb:cc:dd:ee:ff/rename \
+-H "Content-Type: application/json" \
+-H "X-API-Key: 202603" \
+-d '{"name": "Nuevo-AP"}'
 
 ---
 
