@@ -233,10 +233,10 @@ async def _fetch_devices_raw() -> list[dict]:
     body = resp.json()
     return body.get("data", [])
 
-# Función de validación
-async def verify_api_key(api_key: str = Security(api_key_header)):
-    if api_key != API_KEY:
-        raise HTTPException(status_code=403, detail="No autorizado")
+# Función de validación 
+async def verify_api_key(api_key: str = Security(api_key_header)): 
+    if api_key != API_KEY: 
+        raise HTTPException(status_code=403, detail="No autorizado") 
 
 # ---------------------------------------------------------------------------
 # Modelos Pydantic para los cuerpos POST
