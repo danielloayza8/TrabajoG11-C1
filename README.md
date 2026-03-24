@@ -2,6 +2,7 @@
 
 Wrapper ligero con FastAPI sobre la API REST del controlador UniFi Network local,
 enfocado exclusivamente en los puntos de acceso **UAP-AC-LR**.
+Se añadio un nuevo dispositivo **UAP-AC-LITE** 
 
 Puede ejecutarse directamente con Python o dentro de un contenedor Docker.
 
@@ -455,6 +456,17 @@ curl -X POST http://localhost:6000/ap-aclr/fc:ec:da:3d:7f:97/kick-client \
 ```
 
 ---
+**Soporte para múltiples modelos de Access Point**
+Se implementó una mejora en la API para permitir la gestión de múltiples modelos de Access Point UniFi, en lugar de limitarse a un solo modelo como en la versión inicial.
+Esto permite que la API sea más flexible y adaptable a entornos reales donde existen diferentes tipos de dispositivos en la red.
+La API carga los modelos definidos y realiza un filtrado dinámico de los dispositivos obtenidos desde el controlador UniFi.
+Este enfoque permite:
+Filtrar múltiples modelos simultáneamente
+Evitar cambios en el código al agregar nuevos dispositivos
+Mantener compatibilidad con distintos entornos de red
+Para aumentar dispositivos de AP, tendríamos que aumentarlos con variable AP_MODELS
+
+
 
 ## Solución de problemas
 
@@ -573,3 +585,4 @@ docker run -d --name unifi-aclr-api --restart unless-stopped \
   usar contraseñas sin caracteres especiales ni comillas.
 - **Modelo del dispositivo:** el U7 LR (Wi-Fi 7) reporta `U7LR`; el UAP-AC-LR
   (Wi-Fi 5) reporta `UAP-AC-LR`. Verifica siempre con `/debug/devices`.
+
