@@ -70,8 +70,9 @@ LOGIN_ENDPOINT = "/api/auth/login" if IS_UNIFI_OS else "/api/login"
 
 # Cadena del modelo reportada por UniFi para el punto de acceso objetivo.
 # Se usa coincidencia parcial insensible a mayúsculas, por lo que variantes como
-# "UAP-AC-LR", "uap-ac-lr" o "U7LR" son reconocidas correctamente.
-ACLR_MODEL     = os.getenv("ACLR_MODEL", "UAP-AC-LR")
+# AP_MODELS=UAP-AC-LR,U7LR
+AP_MODELS = [m.strip() for m in os.getenv("AP_MODELS", "UAP-AC-LR").split(",") if m.strip()]
+
 
 #VARIABLES para API KEY Nuevo
 API_KEY = os.getenv("API_KEY", "2026")
