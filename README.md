@@ -590,39 +590,39 @@ docker run -d --name unifi-aclr-api --restart unless-stopped \
   ## ANEXOS
   ## 🌐 Apertura de puertos con DST-NAT en MikroTik (L009UiGS-RM)
 
-Para permitir el acceso externo a servicios internos dentro de la red, se configuraron reglas de **DST-NAT (Destination Network Address Translation)** en el router MikroTik L009UiGS-RM.
-
-El **DST-NAT** permite redirigir solicitudes que llegan desde Internet a un puerto específico del router hacia una dirección IP y puerto interno dentro de la red local.
-
----
-
-### 🎯 Objetivo de la configuración
-
-Se habilitaron dos reglas de redirección de puertos:
-
-#### 🔹 Servicio 1 – API propia
-- Permite acceder desde Internet a la API desarrollada localmente.
-- El tráfico entrante en un puerto público es redirigido al servidor interno donde corre la API.
-
-#### 🔹 Servicio 2 – UniFi Application (API REST)
-- Se expone el servicio de **UniFi Network Application**, el cual cuenta con una API REST.
-- Esto permite realizar pruebas remotas e integración durante el desarrollo.
-
----
-
-### 🌍 Acceso externo
-
-Para las pruebas remotas se utiliza:
-
-- Una **dirección IP pública** asignada al router.
-- Un **dominio dinámico generado por MikroTik (DDNS)**, lo que permite acceder sin necesidad de conocer cambios en la IP pública.
-
-Los servicios pueden ser accedidos mediante:
-
-```bash
-http://<IP_PUBLICA>:<PUERTO>
-http://<DOMINIO_MIKROTIK>:<PUERTO>
-  
+   Para permitir el acceso externo a servicios internos dentro de la red, se configuraron reglas de **DST-NAT (Destination Network Address Translation)** en el router MikroTik L009UiGS-RM.
+   
+   El **DST-NAT** permite redirigir solicitudes que llegan desde Internet a un puerto específico del router hacia una dirección IP y puerto interno dentro de la red local.
+   
+   ---
+   
+   ### 🎯 Objetivo de la configuración
+   
+   Se habilitaron dos reglas de redirección de puertos:
+   
+   #### 🔹 Servicio 1 – API propia
+   - Permite acceder desde Internet a la API desarrollada localmente.
+   - El tráfico entrante en un puerto público es redirigido al servidor interno donde corre la API.
+   
+   #### 🔹 Servicio 2 – UniFi Application (API REST)
+   - Se expone el servicio de **UniFi Network Application**, el cual cuenta con una API REST.
+   - Esto permite realizar pruebas remotas e integración durante el desarrollo.
+   
+   ---
+   
+   ### 🌍 Acceso externo
+   
+   Para las pruebas remotas se utiliza:
+   
+   - Una **dirección IP pública** asignada al router.
+   - Un **dominio dinámico generado por MikroTik (DDNS)**, lo que permite acceder sin necesidad de conocer cambios en la IP pública.
+   
+   Los servicios pueden ser accedidos mediante:
+   
+   ```bash
+   http://<IP_PUBLICA>:<PUERTO>
+   http://<DOMINIO_MIKROTIK>:<PUERTO>
+   ```
   
   ## Captura API funcionando Localmente
   <img width="1422" height="657" alt="image" src="https://github.com/user-attachments/assets/c11e1031-08c1-40f3-a01b-cd5b1c016c23" />
