@@ -65,10 +65,10 @@ LOGIN_ENDPOINT = "/api/login" if IS_UNIFI_OS else "/api/login"
 # "UAP-AC-LR", "uap-ac-lr" o "U7LR" son reconocidas correctamente.
 ACLR_MODEL     = os.getenv("ACLR_MODEL", "UAP-AC-LR")
 
-#VARIABLES para API KEY
-API_KEY = os.getenv("API_KEY", "202603")
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
-
+#VARIABLES para API KEY Nuevo
+API_KEY = os.getenv("API_KEY", "2026")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False) 
+#
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -368,8 +368,8 @@ async def get_aclr_clients(mac: str):
 # ---------------------------------------------------------------------------
 # Endpoints POST — operaciones de escritura (no reinician el AP)
 # ---------------------------------------------------------------------------
-
-@app.post("/ap-aclr/{mac}/rename", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"])
+#
+@app.post("/ap-aclr/{mac}/rename", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"]) 
 async def rename_aclr_device(mac: str, payload: RenamePayload):
     """
     Renombra un dispositivo UAP-AC-LR.
@@ -389,7 +389,7 @@ async def rename_aclr_device(mac: str, payload: RenamePayload):
     return {"success": True, "new_name": payload.name}
 
 
-@app.post("/ap-aclr/{mac}/led", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"])
+@app.post("/ap-aclr/{mac}/led", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"]) 
 async def set_aclr_led(mac: str, payload: LEDPayload):
     """
     Controla el estado del LED de un UAP-AC-LR.
@@ -414,7 +414,7 @@ async def set_aclr_led(mac: str, payload: LEDPayload):
     return {"success": True, "led_override": payload.led_override}
 
 
-@app.post("/ap-aclr/{mac}/radio", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"])
+@app.post("/ap-aclr/{mac}/radio", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"]) 
 async def set_aclr_radio(mac: str, payload: RadioPayload):
     """
     Ajusta el canal y la potencia de transmisión de una radio del AP.
@@ -465,7 +465,7 @@ async def set_aclr_radio(mac: str, payload: RadioPayload):
     }
 
 
-@app.post("/ap-aclr/{mac}/kick-client", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"])
+@app.post("/ap-aclr/{mac}/kick-client", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"]) 
 async def kick_client(mac: str, payload: KickClientPayload):
     """
     Desconecta un cliente WiFi específico del AP.
