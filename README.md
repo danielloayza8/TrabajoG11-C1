@@ -396,3 +396,16 @@ UNIFI_HOST=https://192.168.1.10
 - **Docker y red local:** cuando el contenedor corre en la misma máquina que el
   controlador UniFi, usa la IP de la interfaz de red del host en `UNIFI_HOST`,
   nunca `localhost`.
+
+
+  ## ANEXOS
+  ## Capturas CURL
+<img width="1387" height="56" alt="image" src="https://github.com/user-attachments/assets/dbd554f5-8d6f-4b43-88cc-a0675a298375" />
+<img width="1429" height="535" alt="image" src="https://github.com/user-attachments/assets/e4d65beb-2383-4136-b767-1f1ccceecb9f" />
+<img width="1417" height="66" alt="image" src="https://github.com/user-attachments/assets/d21ecdc4-bf26-46a2-91c2-dbeef8307a17" />
+<img width="884" height="560" alt="image" src="https://github.com/user-attachments/assets/368b33ff-a6e4-40f7-9e95-9fa92da20ec6" />
+
+
+
+
+
