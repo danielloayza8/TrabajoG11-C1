@@ -31,6 +31,10 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
 
+#Importar para implementar auth API key
+from fastapi.security import APIKeyHeader
+from fastapi import Security
+
 # ---------------------------------------------------------------------------
 # Configuración
 # ---------------------------------------------------------------------------
@@ -54,12 +58,17 @@ _host_clean    = UNIFI_HOST.rstrip("/")
 BASE_URL       = f"{_host_clean}:{UNIFI_PORT}"
 
 API_PREFIX     = "/proxy/network" if IS_UNIFI_OS else ""
-LOGIN_ENDPOINT = "/api/auth/login" if IS_UNIFI_OS else "/api/login"
+LOGIN_ENDPOINT = "/api/login" if IS_UNIFI_OS else "/api/login"
 
 # Cadena del modelo reportada por UniFi para el punto de acceso objetivo.
 # Se usa coincidencia parcial insensible a mayúsculas, por lo que variantes como
 # "UAP-AC-LR", "uap-ac-lr" o "U7LR" son reconocidas correctamente.
 ACLR_MODEL     = os.getenv("ACLR_MODEL", "UAP-AC-LR")
+
+#VARIABLES para API KEY
+API_KEY = os.getenv("API_KEY", "202603")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -224,6 +233,10 @@ async def _fetch_devices_raw() -> list[dict]:
     body = resp.json()
     return body.get("data", [])
 
+# Función de validación
+async def verify_api_key(api_key: str = Security(api_key_header)):
+    if api_key != API_KEY:
+        raise HTTPException(status_code=403, detail="No autorizado")
 
 
 # ---------------------------------------------------------------------------
@@ -357,7 +370,11 @@ async def get_aclr_clients(mac: str):
 # Endpoints POST — operaciones de escritura (no reinician el AP)
 # ---------------------------------------------------------------------------
 
+<<<<<<< HEAD
 @app.post("/ap-aclr/{mac}/rename", tags=["AP AC-LR — Escritura"])
+=======
+@app.post("/ap-aclr/{mac}/rename", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"])
+>>>>>>> origin/devcpaguay
 async def rename_aclr_device(mac: str, payload: RenamePayload):
     """
     Renombra un dispositivo UAP-AC-LR.
@@ -377,7 +394,11 @@ async def rename_aclr_device(mac: str, payload: RenamePayload):
     return {"success": True, "new_name": payload.name}
 
 
+<<<<<<< HEAD
 @app.post("/ap-aclr/{mac}/led", tags=["AP AC-LR — Escritura"])
+=======
+@app.post("/ap-aclr/{mac}/led", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"])
+>>>>>>> origin/devcpaguay
 async def set_aclr_led(mac: str, payload: LEDPayload):
     """
     Controla el estado del LED de un UAP-AC-LR.
@@ -402,7 +423,11 @@ async def set_aclr_led(mac: str, payload: LEDPayload):
     return {"success": True, "led_override": payload.led_override}
 
 
+<<<<<<< HEAD
 @app.post("/ap-aclr/{mac}/radio", tags=["AP AC-LR — Escritura"])
+=======
+@app.post("/ap-aclr/{mac}/radio", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"])
+>>>>>>> origin/devcpaguay
 async def set_aclr_radio(mac: str, payload: RadioPayload):
     """
     Ajusta el canal y la potencia de transmisión de una radio del AP.
@@ -453,7 +478,11 @@ async def set_aclr_radio(mac: str, payload: RadioPayload):
     }
 
 
+<<<<<<< HEAD
 @app.post("/ap-aclr/{mac}/kick-client", tags=["AP AC-LR — Escritura"])
+=======
+@app.post("/ap-aclr/{mac}/kick-client", dependencies=[Security(verify_api_key)], tags=["AP AC-LR — Escritura"])
+>>>>>>> origin/devcpaguay
 async def kick_client(mac: str, payload: KickClientPayload):
     """
     Desconecta un cliente WiFi específico del AP.
@@ -482,4 +511,8 @@ async def kick_client(mac: str, payload: KickClientPayload):
         "ap_mac":     mac.lower(),
         "client_mac": payload.client_mac.lower(),
         "message":    "Cliente desconectado. Puede reconectarse automáticamente.",
+<<<<<<< HEAD
     }
+=======
+    }
+>>>>>>> origin/devcpaguay
