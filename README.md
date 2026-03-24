@@ -413,7 +413,7 @@ UNIFI_HOST=https://192.168.1.10
 <img width="800" height="306" alt="image" src="https://github.com/user-attachments/assets/32e34323-e518-4244-99dc-f5313c56553a" />
 <img width="2168" height="426" alt="image" src="https://github.com/user-attachments/assets/2b9a234e-2984-492a-800b-87eb745ce3d7" />
 
-## Captura nivel público 
+## Captura en público
 
 
 
