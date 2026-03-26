@@ -783,7 +783,7 @@ docker run -d --name unifi-aclr-api --restart unless-stopped \
 <img width="2168" alt="Docker - logs de arranque" src="https://github.com/user-attachments/assets/2b9a234e-2984-492a-800b-87eb745ce3d7" />
 
 ---
-
+<!-- 
 ### Acceso desde IP pública
 
 <img width="1916" alt="IP pública - health check" src="https://github.com/user-attachments/assets/94a24c6e-1141-47ae-844d-7e18f0a47071" />
@@ -791,3 +791,4 @@ docker run -d --name unifi-aclr-api --restart unless-stopped \
 <img width="1907" alt="IP pública - Swagger UI" src="https://github.com/user-attachments/assets/d14679c0-3d9f-4c56-a809-707c6ce0d230" />
 
 <img width="1879" alt="IP pública - respuesta en producción" src="https://github.com/user-attachments/assets/f08b628c-a6b2-4b6c-92ac-e4113823d53e" />
+-->
