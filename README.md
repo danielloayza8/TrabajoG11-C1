@@ -792,3 +792,18 @@ docker run -d --name unifi-aclr-api --restart unless-stopped \
 
 <img width="1879" alt="IP pública - respuesta en producción" src="https://github.com/user-attachments/assets/f08b628c-a6b2-4b6c-92ac-e4113823d53e" />
 -->
+
+
+PREGUNTAS DE COMENTARIOS:
+1.	Considerando que usan API Key y credenciales locales sin MFA, ¿qué riesgos de seguridad identifican y qué mejoras implementarían (por ejemplo, rotación de claves, scopes, autenticación más robusta o protección de endpoints sensibles)?
+El riesgo real es que si alguien nos roba esa "llave" o adivina la contraseña, tiene las llaves de toda nuestra casa digital. Como no tenemos el segundo paso de seguridad (MFA), no hay nada que lo detenga.
+Para mejorar esto, deberíamos hacer tres cosas:
+Cifrar la información: Actualmente, los datos viajan como una postal que cualquiera puede leer en el camino. Necesitamos usar HTTPS para que todo vaya en un sobre sellado y cifrado.
+Llaves con fecha de vencimiento: En lugar de una sola llave que dure para siempre, hay que usar llaves que caduquen. Así, si una se pierde, en poco tiempo dejará de funcionar solita.
+Cero papeles a la vista: No hay que dejar las contraseñas escritas en archivos de texto dentro del servidor. Es mejor usar "bóvedas digitales" que esconden las claves y solo se las dan a quien realmente las necesita para trabajar.
+2. Si quisieran escalar a producción este desarrollo que necesitarían?
+Para que esto deje de ser un ejercicio y se convierta en una herramienta de la que dependa una empresa, necesitamos que sea robusto y automático:
+Que se cure solo: Necesitamos que, si el sistema falla por un error o se apaga el servidor, el programa sea capaz de "revivir" solito en cuestión de segundos sin que nosotros tengamos que apretar ningún botón.
+Buena memoria: El sistema de UniFi a veces es un poco lento para responder. Para que nuestra API sea veloz, necesitamos que "anote" las cosas que ya sabe en una memoria rápida (cache), así no tiene que preguntarle lo mismo al controlador cada vez.
+Cámaras de vigilancia: Necesitamos un tablero que nos avise si el sistema está "cansado" o si algo se rompió. Es mejor enterarnos nosotros por una alerta que esperar a que un cliente nos llame enojado porque no tiene WiFi.
+Un proceso de "control de calidad": Ya no podemos hacer cambios "a lo valiente" directamente en el servidor. Necesitamos un camino automático donde el código nuevo se pruebe solo y, si todo está bien, se publique sin errores humanos.
