@@ -794,7 +794,8 @@ docker run -d --name unifi-aclr-api --restart unless-stopped \
 -->
 
 
-PREGUNTAS DE COMENTARIOS:
+RESPUESTA A COMENTARIO - Análisis de Seguridad y Estrategia de Escalabilidad para Producción
+
 1.	Considerando que usan API Key y credenciales locales sin MFA, ¿qué riesgos de seguridad identifican y qué mejoras implementarían (por ejemplo, rotación de claves, scopes, autenticación más robusta o protección de endpoints sensibles)?
 El riesgo real es que si alguien nos roba esa "llave" o adivina la contraseña, tiene las llaves de toda nuestra casa digital. Como no tenemos el segundo paso de seguridad (MFA), no hay nada que lo detenga.
 Para mejorar esto, deberíamos hacer tres cosas:
